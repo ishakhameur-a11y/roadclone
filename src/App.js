@@ -28,10 +28,10 @@ function toKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padSta
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function startOfWeek(d) { return addDays(d, -((d.getDay() + 1) % 7)); } // Saturday = start
-const DAYS_SHORT_AR = ["أحد", "إثن", "ثلا", "أرب", "خمي", "جمع", "سبت"];
+const DAYS_SHORT_AR = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const DAYS_SHORT_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function getDaysShort(lang) { return lang === "ar" ? DAYS_SHORT_AR : DAYS_SHORT_EN; }
-const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const MONTHS_AR = ["جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان", "جويلية", "اوت", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 function getMonths(lang) { return lang === "ar" ? MONTHS_AR : MONTHS_EN; }
 function getMonthGrid(y, m) {
@@ -1455,16 +1455,287 @@ const HomeNavIcon = ({ active }) => (<svg viewBox="0 0 24 24" width={20} height=
 const TasksNavIcon = ({ active }) => (<svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="3" /><path d="M3 9h18" />{active && <path d="m8 13 2 2 4-4" />}</svg>);
 const HabitsNavIcon = ({ active }) => (<svg viewBox="0 0 24 24" width={20} height={20} fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8}><path d="M12 2c1 4-4 5-4 9a4 4 0 0 0 8 0c0-1-.5-2-1-2.5.5 2 0 4-1.5 4.5 1-3-2-4-2-7 0-1 .3-2.5.5-4z" /></svg>);
 const GoalsNavIcon = ({ active }) => (<svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" />{active && <circle cx="12" cy="12" r="1.5" fill="currentColor" />}</svg>);
+/* ════════════════════════════════════════════════════════
+   FINANCE SCREEN — مصروف
+════════════════════════════════════════════════════════ */
+const INCOME_CATS = [
+  { id: "salary",    labelAr: "راتب",     labelEn: "Salary",     icon: "💼" },
+  { id: "freelance", labelAr: "عمل حر",   labelEn: "Freelance",  icon: "💻" },
+  { id: "invest",    labelAr: "استثمار",  labelEn: "Investment", icon: "📈" },
+  { id: "gift",      labelAr: "هدية",     labelEn: "Gift",       icon: "🎁" },
+  { id: "other_in",  labelAr: "أخرى",     labelEn: "Other",      icon: "💰" },
+];
+const EXPENSE_CATS = [
+  { id: "food",      labelAr: "طعام",     labelEn: "Food",       icon: "🍔" },
+  { id: "transport", labelAr: "مواصلات",  labelEn: "Transport",  icon: "🚗" },
+  { id: "shopping",  labelAr: "تسوق",     labelEn: "Shopping",   icon: "🛍️" },
+  { id: "bills",     labelAr: "فواتير",   labelEn: "Bills",      icon: "📄" },
+  { id: "health",    labelAr: "صحة",      labelEn: "Health",     icon: "🏥" },
+  { id: "entertain", labelAr: "ترفيه",    labelEn: "Fun",        icon: "🎮" },
+  { id: "edu",       labelAr: "تعليم",    labelEn: "Education",  icon: "📚" },
+  { id: "rent",      labelAr: "إيجار",    labelEn: "Rent",       icon: "🏠" },
+  { id: "other_ex",  labelAr: "أخرى",     labelEn: "Other",      icon: "💸" },
+];
+const ALL_FIN_CATS = [...INCOME_CATS, ...EXPENSE_CATS];
+function getFinCat(id) { return ALL_FIN_CATS.find(c => c.id === id) || { labelAr: "أخرى", labelEn: "Other", icon: "💰" }; }
+function fmtMoney(n) { return Number(n).toLocaleString("fr-DZ", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+
+function FinanceScreen() {
+  const { lang, t, A } = useI18n();
+  const [txs, setTxs] = useLS("road_finance_txs", []);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addType, setAddType] = useState("expense");
+  const [filterMonth, setFilterMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`; });
+
+  const months = getMonths(lang);
+  const [fy, fm] = filterMonth.split("-").map(Number);
+
+  const monthTxs = txs.filter(tx => { const d = new Date(tx.date); return d.getFullYear() === fy && d.getMonth()+1 === fm; });
+  const totalIn  = monthTxs.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const totalEx  = monthTxs.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const balance  = totalIn - totalEx;
+  const savingRate = totalIn > 0 ? Math.round(((totalIn - totalEx) / totalIn) * 100) : 0;
+
+  // last 6 months bar chart
+  const now = new Date();
+  const trend = Array.from({ length: 6 }, (_, i) => {
+    let m = now.getMonth() - 5 + i, y = now.getFullYear();
+    if (m < 0) { m += 12; y--; }
+    const list = txs.filter(tx => { const d = new Date(tx.date); return d.getFullYear() === y && d.getMonth() === m; });
+    return {
+      label: months[m].slice(0, 3),
+      income:  list.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0),
+      expense: list.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0),
+    };
+  });
+  const maxTrend = Math.max(...trend.map(d => Math.max(d.income, d.expense)), 1);
+
+  // expense by category
+  const byCat = EXPENSE_CATS.map(cat => ({
+    ...cat,
+    total: monthTxs.filter(tx => tx.type === "expense" && tx.category === cat.id).reduce((s, t) => s + t.amount, 0),
+  })).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+
+  function prevMonth() {
+    const [y, m] = filterMonth.split("-").map(Number);
+    const d = new Date(y, m - 2, 1);
+    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+  }
+  function nextMonth() {
+    const [y, m] = filterMonth.split("-").map(Number);
+    if (y === now.getFullYear() && m === now.getMonth()+1) return;
+    const d = new Date(y, m, 1);
+    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+  }
+  const isCurrentMonth = filterMonth === `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+
+  const sorted = [...monthTxs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return (
+    <div style={{ padding: "16px 20px 128px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0 }}>{t("مصروف", "Finance")}</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { setAddType("income");  setAddOpen(true); }} style={{ borderRadius: 20, border: `1px solid #10b98150`, background: "#10b98115", color: "#34d399", padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ {t("دخل", "Income")}</button>
+          <button onClick={() => { setAddType("expense"); setAddOpen(true); }} style={{ borderRadius: 20, border: `1px solid #ef444450`, background: "#ef444415", color: "#fb7185", padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>- {t("مصروف", "Expense")}</button>
+        </div>
+      </div>
+
+      {/* Month nav */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <button onClick={prevMonth} style={{ display: "grid", placeItems: "center", height: 32, width: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#cbd5e1", cursor: "pointer" }}><ChevronLeftIcon size={14} flip={lang === "en"} /></button>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{months[fm-1]} {fy}</span>
+        <button onClick={nextMonth} disabled={isCurrentMonth} style={{ display: "grid", placeItems: "center", height: 32, width: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: isCurrentMonth ? "#475569" : "#cbd5e1", cursor: isCurrentMonth ? "not-allowed" : "pointer" }}><ChevronLeftIcon size={14} flip={lang === "ar"} /></button>
+      </div>
+
+      {/* Balance hero card */}
+      <div style={{ borderRadius: 22, padding: 20, marginBottom: 16,
+        background: `linear-gradient(225deg, ${A.a600}, ${A.b600}, ${A.b800})`,
+        boxShadow: `0 16px 32px ${A.b800}4d`, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -30, left: -30, height: 120, width: 120, borderRadius: "50%", background: "rgba(255,255,255,0.08)", filter: "blur(30px)" }} />
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>{t("الرصيد", "Balance")}</div>
+        <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", marginBottom: 4, direction: "ltr", textAlign: lang === "ar" ? "right" : "left" }}>
+          {balance >= 0 ? "+" : ""}{fmtMoney(balance)} {t("د.ج", "DZD")}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>{t(`معدل التوفير: ${Math.max(savingRate, 0)}%`, `Saving rate: ${Math.max(savingRate, 0)}%`)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+          <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.65)", marginBottom: 2 }}>💰 {t("دخل", "Income")}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", direction: "ltr" }}>{fmtMoney(totalIn)} {t("د.ج", "DZD")}</div>
+          </div>
+          <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.65)", marginBottom: 2 }}>💸 {t("مصروف", "Expense")}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", direction: "ltr" }}>{fmtMoney(totalEx)} {t("د.ج", "DZD")}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6-month trend */}
+      <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.04)", padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{t("آخر 6 أشهر", "Last 6 months")}</span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <span style={{ fontSize: 9, color: "#34d399", fontWeight: 600 }}>● {t("دخل", "Income")}</span>
+            <span style={{ fontSize: 9, color: "#fb7185", fontWeight: 600 }}>● {t("مصروف", "Expense")}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 80, direction: "ltr" }}>
+          {trend.map((d, i) => (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{ width: "100%", display: "flex", gap: 2, alignItems: "flex-end", height: 60 }}>
+                <div style={{ flex: 1, borderRadius: "3px 3px 0 0", background: "#34d399", opacity: i === 5 ? 1 : 0.5, height: `${Math.max((d.income / maxTrend) * 56, d.income > 0 ? 3 : 1)}px` }} />
+                <div style={{ flex: 1, borderRadius: "3px 3px 0 0", background: "#fb7185", opacity: i === 5 ? 1 : 0.5, height: `${Math.max((d.expense / maxTrend) * 56, d.expense > 0 ? 3 : 1)}px` }} />
+              </div>
+              <span style={{ fontSize: 8, color: i === 5 ? "#fff" : "#64748b" }}>{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Expense by category */}
+      {byCat.length > 0 && (
+        <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.04)", padding: 16, marginBottom: 14 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", display: "block", marginBottom: 12 }}>{t("المصروف حسب الفئة", "Spending by category")}</span>
+          {byCat.map(cat => {
+            const pct = totalEx > 0 ? Math.round((cat.total / totalEx) * 100) : 0;
+            return (
+              <div key={cat.id} style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{cat.icon}</span>
+                    <span style={{ fontSize: 12, color: "#e2e8f0" }}>{lang === "ar" ? cat.labelAr : cat.labelEn}</span>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fb7185", direction: "ltr" }}>{fmtMoney(cat.total)} {t("د.ج","DZD")}</span>
+                </div>
+                <div style={{ height: 5, borderRadius: 8, background: "rgba(255,255,255,0.08)" }}>
+                  <div style={{ height: "100%", borderRadius: 8, width: `${pct}%`, background: "linear-gradient(90deg,#fb7185,#f43f5e)", transition: "width 0.5s" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Transactions list */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{t("المعاملات", "Transactions")}</span>
+        <span style={{ fontSize: 11, color: "#64748b" }}>{monthTxs.length} {t("معاملة", "items")}</span>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", borderRadius: 18, border: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)" }}>
+          <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>💳</div>
+          <p style={{ color: "#64748b", fontSize: 13 }}>{t("لا توجد معاملات هذا الشهر", "No transactions this month")}</p>
+        </div>
+      ) : sorted.map(tx => {
+        const cat = getFinCat(tx.category);
+        const color = tx.type === "income" ? "#34d399" : "#fb7185";
+        return (
+          <div key={tx.id} style={{ display: "flex", alignItems: "center", gap: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.03)", padding: "12px 14px", marginBottom: 8 }}>
+            <div style={{ display: "grid", placeItems: "center", height: 42, width: 42, borderRadius: 12, flexShrink: 0, background: `${color}18`, fontSize: 20 }}>{cat.icon}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.note || (lang === "ar" ? cat.labelAr : cat.labelEn)}</div>
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{lang === "ar" ? cat.labelAr : cat.labelEn} · {tx.date}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color, direction: "ltr" }}>{tx.type === "income" ? "+" : "-"}{fmtMoney(tx.amount)}</span>
+              <button onClick={() => setTxs(prev => prev.filter(x => x.id !== tx.id))} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14, padding: 2 }}>✕</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {addOpen && (
+        <FinanceAddSheet type={addType} onClose={() => setAddOpen(false)}
+          onSave={form => { setTxs(prev => [...prev, { id: String(Date.now()), ...form }]); setAddOpen(false); }} A={A} />
+      )}
+    </div>
+  );
+}
+
+function FinanceAddSheet({ type, onClose, onSave, A }) {
+  const { lang, t } = useI18n();
+  const [txType, setTxType] = useState(type);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [category, setCategory] = useState(type === "income" ? "salary" : "food");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const cats = txType === "income" ? INCOME_CATS : EXPENSE_CATS;
+  const incColor = "#34d399", expColor = "#fb7185";
+  const color = txType === "income" ? incColor : expColor;
+
+  return (
+    <Sheet onClose={onClose} maxH="92%">
+      {/* Type toggle */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 18 }}>
+        {[{ v: "income", l: `💰 ${t("دخل", "Income")}` }, { v: "expense", l: `💸 ${t("مصروف", "Expense")}` }].map(({ v, l }) => (
+          <button key={v} onClick={() => { setTxType(v); setCategory(v === "income" ? "salary" : "food"); }} style={{
+            padding: 12, borderRadius: 14, border: `1.5px solid ${txType === v ? (v === "income" ? incColor : expColor) : "rgba(255,255,255,0.1)"}`,
+            background: txType === v ? `${v === "income" ? incColor : expColor}18` : "rgba(255,255,255,0.03)",
+            color: txType === v ? (v === "income" ? incColor : expColor) : "#94a3b8",
+            fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+
+      {/* Amount */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>{t(`المبلغ (د.ج)`, "Amount (DZD)")}</p>
+        <input autoFocus value={amount} onChange={e => setAmount(e.target.value)} type="number" placeholder="0"
+          style={{ width: "100%", borderRadius: 14, border: `2px solid ${color}40`, background: "rgba(255,255,255,0.04)",
+            padding: "14px 16px", fontSize: 24, fontWeight: 900, color, outline: "none", boxSizing: "border-box", direction: "ltr", textAlign: lang === "ar" ? "right" : "left" }} />
+      </div>
+
+      {/* Category */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>{t("الفئة", "Category")}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+          {cats.map(cat => (
+            <button key={cat.id} onClick={() => setCategory(cat.id)} style={{
+              padding: "10px 6px", borderRadius: 12, border: `1.5px solid ${category === cat.id ? color : "rgba(255,255,255,0.08)"}`,
+              background: category === cat.id ? `${color}15` : "rgba(255,255,255,0.03)",
+              cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 20 }}>{cat.icon}</span>
+              <span style={{ fontSize: 9, color: category === cat.id ? color : "#94a3b8", fontWeight: 600 }}>{lang === "ar" ? cat.labelAr : cat.labelEn}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Note */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>{t("ملاحظة (اختياري)", "Note (optional)")}</p>
+        <SheetInput value={note} onChange={e => setNote(e.target.value)} placeholder={t("أضف وصفاً...", "Add description...")} accentColor={color} />
+      </div>
+
+      {/* Date */}
+      <div style={{ marginBottom: 4 }}>
+        <p style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>{t("التاريخ", "Date")}</p>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "#161927",
+            padding: "10px 14px", fontSize: 14, color: "#fff", outline: "none", boxSizing: "border-box" }} />
+      </div>
+
+      <PrimaryBtn label={txType === "income" ? t("إضافة دخل ✓", "Add income ✓") : t("إضافة مصروف ✓", "Add expense ✓")}
+        disabled={!amount || Number(amount) <= 0} accentColor={color} accentColor2={color}
+        onClick={() => { if (!amount || Number(amount) <= 0) return; onSave({ type: txType, amount: Number(amount), category, note: note.trim(), date }); }} />
+    </Sheet>
+  );
+}
+
+const FinanceNavIcon = ({ active }) => (<svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v1m0 8v1M9.5 9.5c.5-1 1.5-1.5 2.5-1.5s2.5.5 2.5 2c0 1.5-1.5 2-2.5 2.5S9 14 9 15.5c0 1 1 2 3 2s2.5-.5 3-1.5" /></svg>);
+
 const MoreNavIcon = () => (<svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>);
 
 function BottomNav({ active, onChange }) {
   const { t, A } = useI18n();
   const items = [
-    { id: "more", label: t("المزيد", "More"), Icon: MoreNavIcon },
-    { id: "goals", label: t("الأهداف", "Goals"), Icon: GoalsNavIcon },
-    { id: "habits", label: t("العادات", "Habits"), Icon: HabitsNavIcon },
-    { id: "tasks", label: t("المهام", "Tasks"), Icon: TasksNavIcon },
-    { id: "home", label: t("الرئيسية", "Home"), Icon: HomeNavIcon },
+    { id: "more",    label: t("المزيد",   "More"),    Icon: MoreNavIcon },
+    { id: "finance", label: t("مصروف",    "Finance"), Icon: FinanceNavIcon },
+    { id: "goals",   label: t("الأهداف",  "Goals"),   Icon: GoalsNavIcon },
+    { id: "habits",  label: t("العادات",  "Habits"),  Icon: HabitsNavIcon },
+    { id: "tasks",   label: t("المهام",   "Tasks"),   Icon: TasksNavIcon },
+    { id: "home",    label: t("الرئيسية", "Home"),    Icon: HomeNavIcon },
   ];
   return (
     <div style={{ position: "absolute", bottom: 0, insetInlineStart: 0, insetInlineEnd: 0, zIndex: 30, borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(12,14,22,0.92)", backdropFilter: "blur(20px)", paddingBottom: 6 }}>
@@ -1517,11 +1788,12 @@ export default function RoadApp() {
             }
           `}</style>
           <div style={{ height: "100%", overflowY: "auto" }}>
-            {tab === "home" && <HomeScreen onNavigate={setTab} />}
-            {tab === "tasks" && <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}><TasksScreen /></div>}
-            {tab === "habits" && <HabitsScreen />}
-            {tab === "goals" && <GoalsScreen />}
-            {tab === "more" && <MoreScreen />}
+            {tab === "home"    && <HomeScreen onNavigate={setTab} />}
+            {tab === "tasks"   && <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}><TasksScreen /></div>}
+            {tab === "habits"  && <HabitsScreen />}
+            {tab === "goals"   && <GoalsScreen />}
+            {tab === "finance" && <FinanceScreen />}
+            {tab === "more"    && <MoreScreen />}
           </div>
           <BottomNav active={tab} onChange={setTab} />
         </div>
