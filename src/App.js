@@ -28,10 +28,10 @@ function toKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padSta
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function startOfWeek(d) { return addDays(d, -((d.getDay() + 1) % 7)); } // Saturday = start
-const DAYS_SHORT_AR = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+const DAYS_SHORT_AR = ["أحد", "إثن", "ثلا", "أرب", "خمي", "جمع", "سبت"];
 const DAYS_SHORT_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function getDaysShort(lang) { return lang === "ar" ? DAYS_SHORT_AR : DAYS_SHORT_EN; }
-const MONTHS_AR = ["جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان", "جويلية", "اوت", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 function getMonths(lang) { return lang === "ar" ? MONTHS_AR : MONTHS_EN; }
 function getMonthGrid(y, m) {
@@ -172,7 +172,7 @@ const HOME_HABITS_SEED = [
 
 function HomeScreen({ onNavigate }) {
   const { lang, t, userName, A } = useI18n();
-  const [tasks, setTasks] = useState(HOME_TASKS_SEED);
+  const [tasks, setTasks] = useLS("road_home_tasks", HOME_TASKS_SEED);
   const [notifOpen, setNotifOpen] = useState(false);
   const today = new Date();
   const [selectedDay, setSelectedDay] = useState(today.getDate());
@@ -401,7 +401,7 @@ function layoutDay(events) {
 
 function TasksScreen() {
   const { lang, t, A } = useI18n();
-  const [events, setEvents] = useState(() => makeTasksSeed(lang));
+  const [events, setEvents] = useLS("road_events", () => makeTasksSeed(lang));
   const [selected, setSelected] = useState(new Date());
   const [view, setView] = useState("day");
   const [monthOpen, setMonthOpen] = useState(false);
@@ -918,7 +918,7 @@ function calcStreak(h, today) {
 
 function HabitsScreen() {
   const { lang, t, A } = useI18n();
-  const [habits, setHabits] = useState(() => makeHabitsSeed(t));
+  const [habits, setHabits] = useLS("road_habits", () => makeHabitsSeed(t));
   const [addOpen, setAddOpen] = useState(false);
   const [editHabit, setEditHabit] = useState(null);
   const [statsHabit, setStatsHabit] = useState(null);
@@ -1140,7 +1140,7 @@ function goalDone(g) { return goalProgress(g) >= 100; }
 
 function GoalsScreen() {
   const { lang, t, A } = useI18n();
-  const [goals, setGoals] = useState(() => makeGoalsSeed(t));
+  const [goals, setGoals] = useLS("road_goals", () => makeGoalsSeed(t));
   const [filter, setFilter] = useState("active");
   const [addOpen, setAddOpen] = useState(false);
   const [editGoal, setEditGoal] = useState(null);
