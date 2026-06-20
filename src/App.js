@@ -170,181 +170,243 @@ const HOME_HABITS_SEED = [
   { id: "h4", title: "رياضة", titleEn: "Exercise", emoji: "🏃", streak: 4, goal: 1, doneToday: 0, color: "#fb7185" },
 ];
 
-function HomeScreen({ onNavigate }) {
-  const { lang, t, userName, A } = useI18n();
-  const [tasks, setTasks] = useLS("road_home_tasks", HOME_TASKS_SEED);
-  const [notifOpen, setNotifOpen] = useState(false);
+function HomeScreen({ onNavigate, events, habits, goals, txs }) {
+  const { lang, t, A } = useI18n();
   const today = new Date();
-  const [selectedDay, setSelectedDay] = useState(today.getDate());
+  const [selectedDate, setSelectedDate] = useState(today);
 
   const dShort = getDaysShort(lang);
+  const months = getMonths(lang);
   const week = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(today), i));
-  const doneCount = tasks.filter(x => x.done).length;
-  const percent = Math.round((doneCount / tasks.length) * 100);
 
-  const priorityStyles = {
-    high: { label: t("عالية", "High"), bg: "rgba(244,63,94,0.15)", color: "#fb7185" },
-    medium: { label: t("متوسطة", "Medium"), bg: "rgba(245,158,11,0.15)", color: "#fbbf24" },
-    low: { label: t("منخفضة", "Low"), bg: "rgba(14,165,233,0.15)", color: "#38bdf8" },
-  };
-  const toggleTask = (id) => setTasks(prev => prev.map(x => x.id === id ? { ...x, done: !x.done } : x));
-  const sortedTasks = useMemo(() => [...tasks].sort((a, b) => Number(a.done) - Number(b.done)), [tasks]);
+  // ── Tasks for selected day (from events/TasksScreen data) ──
+  const selKey = toKey(selectedDate);
+  const dayEvents = (events[selKey] || []).sort((a, b) => a.start - b.start);
+  const dayDone  = dayEvents.filter(e => e.status === "done").length;
+  const dayTotal = dayEvents.length;
+  const percent  = dayTotal ? Math.round((dayDone / dayTotal) * 100) : 0;
+  const isToday  = isSameDay(selectedDate, today);
+
+  // ── Habits stats ──
+  const todayKey = toKey(today);
+  function calcStreak(h) {
+    let s = 0, d = today;
+    while (true) {
+      if (h.days && h.days.includes(d.getDay())) { if ((h.log[toKey(d)] ?? 0) >= h.goal) s++; else break; }
+      else if (!h.days) { if (h.log[toKey(d)]) s++; else break; }
+      d = addDays(d, -1);
+      if (s > 0 && d < addDays(today, -370)) break;
+      if (d < addDays(today, -370)) break;
+    }
+    return s;
+  }
+  const dueHabitsToday = habits.filter(h => !h.days || h.days.includes(today.getDay()));
+  const doneHabitsToday = dueHabitsToday.filter(h => (h.log?.[todayKey] ?? 0) >= (h.goal ?? 1)).length;
+  const longestStreak = habits.reduce((max, h) => Math.max(max, calcStreak(h)), 0);
+
+  // ── Goals stats ──
+  const activeGoals = goals.filter(g => {
+    const done = g.milestones ? g.milestones.filter(m => m.done).length : (g.doneSteps ?? 0);
+    const total = g.milestones ? g.milestones.length : (g.totalSteps ?? 1);
+    return total > 0 && done < total;
+  }).length;
+
+  // ── Finance stats (this month) ──
+  const now = new Date();
+  const monthTxs = txs.filter(tx => {
+    const d = new Date(tx.date);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
+  const monthIn  = monthTxs.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const monthEx  = monthTxs.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const monthBal = monthIn - monthEx;
+
+  const priorityColors = { high: "#fb7185", medium: "#fbbf24", low: "#38bdf8" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: "16px 20px 128px" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", animation: "floatIn 0.45s both" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "grid", placeItems: "center", height: 48, width: 48, borderRadius: 16,
-            background: `linear-gradient(135deg, ${A.a500}, ${A.b600})`, fontSize: 18, fontWeight: 700, color: "#fff",
-            boxShadow: `0 8px 16px ${A.a600}4d` }}>{userName.charAt(0)}</div>
-          <div>
-            <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>{t("صباح الخير 👋", "Good morning 👋")}</p>
-            <h1 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0 }}>{userName}</h1>
-          </div>
-        </div>
-        <div style={{ position: "relative" }}>
-          <button onClick={() => setNotifOpen(o => !o)} style={{
-            position: "relative", display: "grid", placeItems: "center", height: 44, width: 44, borderRadius: 16,
-            border: notifOpen ? `1px solid ${A.a500}66` : "1px solid rgba(255,255,255,0.1)",
-            background: notifOpen ? `${A.a500}26` : "rgba(255,255,255,0.05)",
-            color: notifOpen ? A.a300 : "#cbd5e1", cursor: "pointer" }}>
-            <BellIcon />
-            <span style={{ position: "absolute", top: 10, [lang === "ar" ? "left" : "right"]: 10, height: 8, width: 8, borderRadius: "50%", background: "#fb7185", boxShadow: "0 0 0 2px #0c0e16" }} />
-          </button>
-          {notifOpen && (
-            <>
-              <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
-              <div style={{ position: "absolute", [lang === "ar" ? "left" : "right"]: 0, top: 48, zIndex: 40, width: 256, overflow: "hidden", borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.1)", background: "#161927", boxShadow: "0 16px 40px rgba(0,0,0,0.6)", animation: "floatIn 0.3s both" }}>
-                <p style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "#fff", margin: 0 }}>{t("الإشعارات", "Notifications")}</p>
-                {[
-                  { emoji: "⏰", text: t("اجتماع فريق التصميم بعد ساعة", "Design team meeting in 1 hour"), time: t("قبل ٥ دقائق", "5 min ago") },
-                  { emoji: "🔥", text: t("سلسلة التأمل وصلت ٢١ يوم!", "Meditation streak hit 21 days!"), time: t("قبل ساعتين", "2 hours ago") },
-                  { emoji: "🎯", text: t("اقترب موعد هدف إنقاص الوزن", "Weight loss goal deadline is near"), time: t("أمس", "Yesterday") },
-                ].map((n, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, padding: "12px 16px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                    <span style={{ fontSize: 16 }}>{n.emoji}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontSize: 11, lineHeight: 1.4, color: "#e2e8f0", margin: 0 }}>{n.text}</p>
-                      <p style={{ marginTop: 2, fontSize: 9, color: "#64748b", margin: 0 }}>{n.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </header>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "16px 20px 128px" }}>
 
-      <section style={{ display: "flex", justifyContent: "space-between", gap: 6, animation: "floatIn 0.45s 60ms both" }}>
+      {/* ── LOGO ── */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", paddingTop: 8, animation: "floatIn 0.45s both" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "grid", placeItems: "center", height: 44, width: 44, borderRadius: 14,
+            background: `linear-gradient(135deg, ${A.a500}, ${A.b600})`,
+            boxShadow: `0 8px 24px ${A.a600}60`, fontSize: 22 }}>⚡</div>
+          <span style={{ fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: -1 }}>Road</span>
+        </div>
+      </div>
+
+      {/* ── WEEK STRIP ── */}
+      <section style={{ display: "flex", justifyContent: "space-between", gap: 4, animation: "floatIn 0.45s 60ms both" }}>
         {week.map(d => {
-          const isActive = d.getDate() === selectedDay;
+          const isActive = isSameDay(d, selectedDate);
+          const isTdy    = isSameDay(d, today);
+          const dk       = toKey(d);
+          const dayEvs   = events[dk] || [];
+          const hasTasks = dayEvs.length > 0;
           return (
-            <button key={toKey(d)} onClick={() => setSelectedDay(d.getDate())} style={{
-              display: "flex", flex: 1, flexDirection: "column", alignItems: "center", gap: 4, borderRadius: 16, padding: "10px 0",
-              border: "none", cursor: "pointer", transition: "all 0.2s",
+            <button key={dk} onClick={() => setSelectedDate(d)} style={{
+              display: "flex", flex: 1, flexDirection: "column", alignItems: "center", gap: 4,
+              borderRadius: 16, padding: "10px 0", border: "none", cursor: "pointer", transition: "all 0.2s",
               background: isActive ? `linear-gradient(180deg, ${A.a500}, ${A.b600})` : "transparent",
               boxShadow: isActive ? `0 8px 16px ${A.a600}4d` : "none" }}>
               <span style={{ fontSize: 10, color: isActive ? "#fff" : "#64748b" }}>{dShort[d.getDay()]}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: isActive ? "#fff" : "#cbd5e1" }}>{d.getDate()}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: isActive ? "#fff" : isTdy ? A.a400 : "#cbd5e1" }}>{d.getDate()}</span>
+              <span style={{ height: 4, width: 4, borderRadius: "50%",
+                background: hasTasks ? (isActive ? "rgba(255,255,255,0.7)" : A.a400) : "transparent" }} />
             </button>
           );
         })}
       </section>
 
+      {/* ── PROGRESS CARD (day-aware) ── */}
       <section style={{ position: "relative", overflow: "hidden", borderRadius: 24, padding: 20,
-        background: `linear-gradient(225deg, ${A.a600}, ${A.b600}, ${A.b800})`, boxShadow: `0 16px 32px ${A.b800}4d`, animation: "floatIn 0.45s 120ms both" }}>
+        background: `linear-gradient(225deg, ${A.a600}, ${A.b600}, ${A.b800})`,
+        boxShadow: `0 16px 32px ${A.b800}4d`, animation: "floatIn 0.45s 120ms both" }}>
         <div style={{ position: "absolute", top: -40, left: -40, height: 160, width: 160, borderRadius: "50%", background: "rgba(255,255,255,0.1)", filter: "blur(40px)" }} />
         <div style={{ position: "absolute", bottom: -48, right: -32, height: 144, width: 144, borderRadius: "50%", background: "rgba(232,121,249,0.2)", filter: "blur(40px)" }} />
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 20, background: "rgba(255,255,255,0.15)", padding: "4px 12px", fontSize: 11, fontWeight: 500, color: "#fff", width: "fit-content" }}>
-              <SparkleIcon size={14} />{t("تقدّم اليوم", "Today's progress")}
+              <SparkleIcon size={14} />
+              {isToday ? t("تقدّم اليوم", "Today's progress") : `${selectedDate.getDate()} ${months[selectedDate.getMonth()]}`}
             </div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3, color: "#fff", margin: 0 }}>{t(`أنجزت ${doneCount} من ${tasks.length} مهام`, `Completed ${doneCount} of ${tasks.length} tasks`)}</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3, color: "#fff", margin: 0 }}>
+              {dayTotal === 0
+                ? t("لا توجد مهام", "No tasks")
+                : t(`أنجزت ${dayDone} من ${dayTotal} مهام`, `Completed ${dayDone} of ${dayTotal} tasks`)}
+            </h2>
             <p style={{ fontSize: 12, lineHeight: 1.5, color: "rgba(224,231,255,0.8)", margin: 0 }}>
-              {percent >= 100 ? t("رائع! أكملت كل مهام اليوم 🎉", "Amazing! All tasks done today 🎉") : t("استمر، أنت على الطريق الصحيح نحو هدفك", "Keep going, you're on the right road")}
+              {percent >= 100
+                ? t("رائع! أكملت كل المهام 🎉", "Amazing! All tasks done 🎉")
+                : dayTotal === 0
+                  ? t("اضغط على المهام لإضافة مهام جديدة", "Tap Tasks to add new tasks")
+                  : t("استمر، أنت على الطريق الصحيح نحو هدفك", "Keep going, you're on the right road")}
             </p>
           </div>
           <ProgressRing percent={percent} doneLabel={t("مكتمل", "Done")} />
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, animation: "floatIn 0.45s 180ms both" }}>
+      {/* ── QUICK STATS (real data) ── */}
+      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, animation: "floatIn 0.45s 180ms both" }}>
         {[
-          { value: String(tasks.length - doneCount), label: t("مهام متبقية", "Tasks left"), color: A.a400, bg: `${A.a500}1a` },
-          { value: "21", label: t("أطول سلسلة", "Best streak"), color: "#fbbf24", bg: "rgba(245,158,11,0.1)", flame: true },
-          { value: "4", label: t("عادات نشطة", "Active habits"), color: "#34d399", bg: "rgba(16,185,129,0.1)" },
+          { value: String(dayTotal - dayDone), label: t("مهام متبقية", "Tasks left"), color: A.a400, bg: `${A.a500}1a`, onClick: () => onNavigate("tasks") },
+          { value: longestStreak, label: t("أطول سلسلة", "Best streak"), color: "#fbbf24", bg: "rgba(245,158,11,0.1)", flame: true, onClick: () => onNavigate("habits") },
+          { value: String(doneHabitsToday) + "/" + String(dueHabitsToday.length), label: t("عادات اليوم", "Today's habits"), color: "#34d399", bg: "rgba(16,185,129,0.1)", onClick: () => onNavigate("habits") },
         ].map(s => (
-          <div key={s.label} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: s.bg, padding: "14px 12px", textAlign: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 20, fontWeight: 700, color: s.color }}>{s.flame && <FlameIcon size={16} />}{s.value}</div>
-            <div style={{ marginTop: 2, fontSize: 11, color: "#94a3b8" }}>{s.label}</div>
-          </div>
+          <button key={s.label} onClick={s.onClick} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: s.bg, padding: "14px 10px", textAlign: "center", cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 18, fontWeight: 700, color: s.color }}>{s.flame && <FlameIcon size={14} />}{s.value}</div>
+            <div style={{ marginTop: 3, fontSize: 10, color: "#94a3b8" }}>{s.label}</div>
+          </button>
         ))}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 12, animation: "floatIn 0.45s 240ms both" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>{t("عاداتك اليوم", "Today's habits")}</h3>
-          <button onClick={() => onNavigate?.("habits")} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 12, fontWeight: 500, color: A.a400, background: "none", border: "none", cursor: "pointer" }}>
-            {t("عرض الكل", "View all")}<ChevronLeftIcon size={14} flip={lang === "en"} />
-          </button>
-        </div>
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", margin: "0 -20px", padding: "0 20px 4px" }}>
-          {HOME_HABITS_SEED.map(h => {
-            const pct = Math.min(100, Math.round((h.doneToday / h.goal) * 100));
-            return (
-              <div key={h.id} style={{ width: 120, flexShrink: 0, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.04)", padding: 14 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 24 }}>{h.emoji}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 2, borderRadius: 20, background: "rgba(245,158,11,0.1)", padding: "2px 6px", fontSize: 10, fontWeight: 600, color: "#fbbf24" }}><FlameIcon size={11} />{h.streak}</span>
+      {/* ── TODAY'S HABITS ── */}
+      {habits.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 12, animation: "floatIn 0.45s 240ms both" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>{t("عاداتك اليوم", "Today's habits")}</h3>
+            <button onClick={() => onNavigate("habits")} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 12, fontWeight: 500, color: A.a400, background: "none", border: "none", cursor: "pointer" }}>
+              {t("عرض الكل", "View all")}<ChevronLeftIcon size={14} flip={lang === "en"} />
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", margin: "0 -20px", padding: "0 20px 4px" }}>
+            {habits.slice(0, 6).map(h => {
+              const count   = h.log?.[todayKey] ?? 0;
+              const goal    = h.goal ?? 1;
+              const pct     = Math.min(100, Math.round((count / goal) * 100));
+              const streak  = calcStreak(h);
+              const isDue   = !h.days || h.days.includes(today.getDay());
+              return (
+                <div key={h.id} style={{ width: 112, flexShrink: 0, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.04)", padding: 14, opacity: isDue ? 1 : 0.45 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 22 }}>{h.icon || "🔥"}</span>
+                    {streak > 0 && <span style={{ display: "flex", alignItems: "center", gap: 2, borderRadius: 20, background: "rgba(245,158,11,0.1)", padding: "2px 6px", fontSize: 9, fontWeight: 600, color: "#fbbf24" }}><FlameIcon size={10} />{streak}</span>}
+                  </div>
+                  <p style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "#fff", margin: "8px 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.title}</p>
+                  <p style={{ fontSize: 10, color: "#64748b", margin: 0 }}>{count}/{goal}</p>
+                  <div style={{ marginTop: 8, height: 5, overflow: "hidden", borderRadius: 8, background: "rgba(255,255,255,0.1)" }}>
+                    <div style={{ height: "100%", borderRadius: 8, width: `${pct}%`, background: h.color || A.a500, transition: "width 0.4s" }} />
+                  </div>
                 </div>
-                <p style={{ marginTop: 8, fontSize: 13, fontWeight: 600, color: "#fff", margin: "8px 0 0" }}>{t(h.title, h.titleEn)}</p>
-                <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0" }}>{h.doneToday}/{h.goal} {h.goal > 1 ? t("أكواب", "cups") : t("مرة", "time")}</p>
-                <div style={{ marginTop: 8, height: 6, overflow: "hidden", borderRadius: 8, background: "rgba(255,255,255,0.1)" }}>
-                  <div style={{ height: "100%", borderRadius: 8, width: `${pct}%`, background: h.color, transition: "width 0.5s" }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
+      {/* ── DAY'S TASKS ── */}
       <section style={{ display: "flex", flexDirection: "column", gap: 12, animation: "floatIn 0.45s 300ms both" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>{t("مهام اليوم", "Today's tasks")}</h3>
-          <button onClick={() => onNavigate?.("tasks")} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 12, fontWeight: 500, color: A.a400, background: "none", border: "none", cursor: "pointer" }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>
+            {isToday ? t("مهام اليوم", "Today's tasks") : `${selectedDate.getDate()} ${months[selectedDate.getMonth()]}`}
+          </h3>
+          <button onClick={() => onNavigate("tasks")} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 12, fontWeight: 500, color: A.a400, background: "none", border: "none", cursor: "pointer" }}>
             {t("عرض الكل", "View all")}<ChevronLeftIcon size={14} flip={lang === "en"} />
           </button>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sortedTasks.map(task => {
-            const ps = priorityStyles[task.priority];
-            return (
-              <button key={task.id} onClick={() => toggleTask(task.id)} style={{
-                display: "flex", width: "100%", alignItems: "center", gap: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)",
-                padding: 14, textAlign: lang === "ar" ? "right" : "left", background: task.done ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)",
-                opacity: task.done ? 0.6 : 1, cursor: "pointer", transition: "all 0.15s" }}>
-                <span style={{ display: "grid", placeItems: "center", height: 24, width: 24, flexShrink: 0, borderRadius: "50%",
-                  border: `2px solid ${task.done ? A.a500 : "#475569"}`, background: task.done ? A.a500 : "transparent", color: "#fff" }}>
-                  {task.done && <CheckIcon size={12} />}
-                </span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600,
-                    color: task.done ? "#64748b" : "#fff", textDecoration: task.done ? "line-through" : "none" }}>{t(task.title, task.titleEn)}</span>
-                  <span style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#64748b" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><ClockIcon />{t(task.time, task.timeEn)}</span>
-                    <span style={{ borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 500, color: task.categoryColor, background: `${task.categoryColor}1f` }}>{t(task.category, task.categoryEn)}</span>
-                  </span>
-                </span>
-                <span style={{ flexShrink: 0, borderRadius: 20, padding: "4px 8px", fontSize: 10, fontWeight: 600, background: ps.bg, color: ps.color }}>{ps.label}</span>
-              </button>
-            );
-          })}
+        {dayEvents.length === 0 ? (
+          <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.02)", padding: "24px", textAlign: "center" }}>
+            <p style={{ color: "#475569", fontSize: 13, margin: 0 }}>{t("لا توجد مهام في هذا اليوم", "No tasks on this day")}</p>
+          </div>
+        ) : dayEvents.slice(0, 5).map(ev => {
+          const sc = STATUS_COLOR[ev.status] || A.a500;
+          return (
+            <button key={ev.id} onClick={() => onNavigate("tasks")} style={{
+              display: "flex", width: "100%", alignItems: "center", gap: 12, borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.05)", padding: 14,
+              textAlign: lang === "ar" ? "right" : "left",
+              background: ev.status === "done" ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.04)",
+              opacity: ev.status === "done" ? 0.6 : 1, cursor: "pointer", transition: "all 0.15s" }}>
+              <span style={{ height: 32, width: 5, flexShrink: 0, borderRadius: 4, background: sc }} />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  fontSize: 13, fontWeight: 600, color: ev.status === "done" ? "#64748b" : "#fff",
+                  textDecoration: ev.status === "done" ? "line-through" : "none" }}>{ev.title}</span>
+                <span style={{ fontSize: 10, color: "#64748b" }}>{minutesToLabel(ev.start, lang)} – {minutesToLabel(ev.end, lang)}</span>
+              </span>
+              <span style={{ flexShrink: 0, borderRadius: 20, padding: "3px 8px", fontSize: 9, fontWeight: 700, background: `${sc}22`, color: sc }}>
+                {statusLabel(ev.status, t)}
+              </span>
+            </button>
+          );
+        })}
+      </section>
+
+      {/* ── FINANCE SUMMARY ── */}
+      <section style={{ animation: "floatIn 0.45s 360ms both" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>{t("ملخص المصروف", "Finance summary")}</h3>
+          <button onClick={() => onNavigate("finance")} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 12, fontWeight: 500, color: A.a400, background: "none", border: "none", cursor: "pointer" }}>
+            {t("عرض الكل", "View all")}<ChevronLeftIcon size={14} flip={lang === "en"} />
+          </button>
+        </div>
+        <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.04)", padding: 16 }}>
+          <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 4px" }}>{getMonths(lang)[now.getMonth()]} {now.getFullYear()}</p>
+          <p style={{ fontSize: 24, fontWeight: 900, color: monthBal >= 0 ? "#34d399" : "#fb7185", margin: "0 0 14px", direction: "ltr", textAlign: lang === "ar" ? "right" : "left" }}>
+            {monthBal >= 0 ? "+" : ""}{fmtMoney(monthBal)} {t("د.ج", "DZD")}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {[
+              { label: t("دخل", "Income"), val: monthIn, color: "#34d399" },
+              { label: t("مصروف", "Expense"), val: monthEx, color: "#fb7185" },
+              { label: t("معاملات", "Txs"), val: monthTxs.length, color: A.a400, noMoney: true },
+            ].map(s => (
+              <div key={s.label} style={{ borderRadius: 12, background: "rgba(255,255,255,0.04)", padding: "10px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: s.color, direction: "ltr" }}>{s.noMoney ? s.val : fmtMoney(s.val)}</div>
+                <div style={{ fontSize: 9, color: "#64748b", marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {monthTxs.length === 0 && (
+            <p style={{ textAlign: "center", fontSize: 11, color: "#475569", marginTop: 12 }}>{t("لا توجد معاملات هذا الشهر", "No transactions this month")}</p>
+          )}
         </div>
       </section>
 
-      <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.05)", background: "linear-gradient(270deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", padding: 20, animation: "floatIn 0.45s 360ms both" }}>
+      {/* ── QUOTE ── */}
+      <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.05)", background: "linear-gradient(270deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", padding: 20, animation: "floatIn 0.45s 420ms both" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <span style={{ fontSize: 28 }}>🚀</span>
           <div>
@@ -358,6 +420,7 @@ function HomeScreen({ onNavigate }) {
     </div>
   );
 }
+
 /* ════════════════════════════════════════════════════════
    TASKS SCREEN — full gesture system (press/scroll/move/resize)
 ════════════════════════════════════════════════════════ */
@@ -399,9 +462,8 @@ function layoutDay(events) {
   return placed.map(p => ({ ...p, total: colEnds.length }));
 }
 
-function TasksScreen() {
+function TasksScreen({ events, setEvents }) {
   const { lang, t, A } = useI18n();
-  const [events, setEvents] = useLS("road_events", () => makeTasksSeed(lang));
   const [selected, setSelected] = useState(new Date());
   const [view, setView] = useState("day");
   const [monthOpen, setMonthOpen] = useState(false);
@@ -916,9 +978,8 @@ function calcStreak(h, today) {
   return streak;
 }
 
-function HabitsScreen() {
+function HabitsScreen({ habits, setHabits }) {
   const { lang, t, A } = useI18n();
-  const [habits, setHabits] = useLS("road_habits", () => makeHabitsSeed(t));
   const [addOpen, setAddOpen] = useState(false);
   const [editHabit, setEditHabit] = useState(null);
   const [statsHabit, setStatsHabit] = useState(null);
@@ -1138,9 +1199,8 @@ function makeGoalsSeed(t) {
 function goalProgress(g) { return g.milestones.length ? Math.round((g.milestones.filter(m => m.done).length / g.milestones.length) * 100) : 0; }
 function goalDone(g) { return goalProgress(g) >= 100; }
 
-function GoalsScreen() {
+function GoalsScreen({ goals, setGoals }) {
   const { lang, t, A } = useI18n();
-  const [goals, setGoals] = useLS("road_goals", () => makeGoalsSeed(t));
   const [filter, setFilter] = useState("active");
   const [addOpen, setAddOpen] = useState(false);
   const [editGoal, setEditGoal] = useState(null);
@@ -1480,9 +1540,8 @@ const ALL_FIN_CATS = [...INCOME_CATS, ...EXPENSE_CATS];
 function getFinCat(id) { return ALL_FIN_CATS.find(c => c.id === id) || { labelAr: "أخرى", labelEn: "Other", icon: "💰" }; }
 function fmtMoney(n) { return Number(n).toLocaleString("fr-DZ", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
-function FinanceScreen() {
+function FinanceScreen({ txs, setTxs }) {
   const { lang, t, A } = useI18n();
-  const [txs, setTxs] = useLS("road_finance_txs", []);
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState("expense");
   const [filterMonth, setFilterMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`; });
@@ -1759,13 +1818,19 @@ function BottomNav({ active, onChange }) {
    APP ROOT — with phone frame + ambient glow like app.tsx
 ════════════════════════════════════════════════════════ */
 export default function RoadApp() {
-  const [lang, setLang] = useLS("road_lang", "ar");
-  const [accent, setAccent] = useLS("road_accent", "violet");
+  const [lang, setLang]       = useLS("road_lang",    "ar");
+  const [accent, setAccent]   = useLS("road_accent",  "violet");
   const [userName, setUserName] = useLS("road_username", () => (lang === "ar" ? "سلطان العتيبي" : "John Doe"));
-  const [tab, setTab] = useState("home");
+  const [tab, setTab]         = useState("home");
 
   const t = (ar, en) => (lang === "ar" ? ar : en);
   const A = ACCENT_VARS[accent];
+
+  // Shared persistent state — passed down to all screens
+  const [events, setEvents] = useLS("road_events",      () => makeTasksSeed(lang));
+  const [habits, setHabits] = useLS("road_habits",      () => makeHabitsSeed(t));
+  const [goals,  setGoals]  = useLS("road_goals",       () => makeGoalsSeed(t));
+  const [txs,    setTxs]    = useLS("road_finance_txs", []);
 
   useEffect(() => { document.documentElement.dir = lang === "ar" ? "rtl" : "ltr"; document.documentElement.lang = lang; }, [lang]);
 
@@ -1783,16 +1848,14 @@ export default function RoadApp() {
             ::-webkit-scrollbar{width:0;height:0;}
             input,select,button,textarea{font-family:inherit;}
             @keyframes floatIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-            @media (min-width: 481px) {
-              body { background: #05060a; }
-            }
+            @media (min-width: 481px) { body { background: #05060a; } }
           `}</style>
           <div style={{ height: "100%", overflowY: "auto" }}>
-            {tab === "home"    && <HomeScreen onNavigate={setTab} />}
-            {tab === "tasks"   && <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}><TasksScreen /></div>}
-            {tab === "habits"  && <HabitsScreen />}
-            {tab === "goals"   && <GoalsScreen />}
-            {tab === "finance" && <FinanceScreen />}
+            {tab === "home"    && <HomeScreen    onNavigate={setTab} events={events} habits={habits} goals={goals} txs={txs} />}
+            {tab === "tasks"   && <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}><TasksScreen events={events} setEvents={setEvents} /></div>}
+            {tab === "habits"  && <HabitsScreen  habits={habits}  setHabits={setHabits} />}
+            {tab === "goals"   && <GoalsScreen   goals={goals}    setGoals={setGoals} />}
+            {tab === "finance" && <FinanceScreen txs={txs}        setTxs={setTxs} />}
             {tab === "more"    && <MoreScreen />}
           </div>
           <BottomNav active={tab} onChange={setTab} />
